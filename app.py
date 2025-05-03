@@ -3,8 +3,16 @@ import pandas as pd
 import plotly.express as px
 import io
 
+# إعداد صفحة التطبيق
 st.set_page_config(page_title="تحليل Excel المتقدم", layout="wide")
 
+# عنوان رئيسي مع اسمك
+st.markdown(
+    "<h1 style='text-align: right; color: #4B8BBE;'>📊 أداة تحليل وتنظيف ملفات Excel / CSV - إعداد: zen mohammdad</h1>",
+    unsafe_allow_html=True)
+
+
+# دالة لتنظيف البيانات
 def clean_data(df):
     original_rows = df.shape[0]
     df.columns = df.columns.str.strip().str.lower().str.replace(' ', '_')
@@ -14,44 +22,33 @@ def clean_data(df):
     df_cleaned.fillna('', inplace=True)
     return df_cleaned, duplicates_removed
 
-def analyze_custom_words_with_rows(df, words):
+
+# دالة لتحليل الكلمات مع تطابق كل الشروط في نفس الصف
+def analyze_custom_words_with_rows(df, word_dict):
+    # أنشئ قائمة لتخزين الصفوف المطابقة
     results = []
-    word_list = [w.strip() for w in words if w.strip()]
-    text_cols = df.select_dtypes(include='object').columns
-    for word in word_list:
-        for col in text_cols:
+
+    # لكل عمود والكلمات المدخلة الخاصة به
+    for col, words in word_dict.items():
+        if col in df.columns:
             col_lower = df[col].astype(str).str.lower()
-            mask = col_lower.str.contains(word.lower())
-            matched_rows = df[mask]
-            for idx, row in matched_rows.iterrows():
-                results.append({
-                    'الكلمة': word,
-                    'العمود': col,
-                    'رقم الصف': idx,
-                    'محتوى الصف': row.to_dict()
-                })
-    return pd.DataFrame(results)
+            # ابتكار ماسك (فلتر) لكل الكلمات التي تم البحث عنها
+            mask = col_lower.str.contains('|'.join(words), case=False, na=False)
+            df = df[mask]  # ترشيح البيانات تبعاً للعمود المحدد
 
-def analyze_numeric(df):
-    rows = []
-    for col in df.select_dtypes(include=['int64', 'float64']).columns:
-        col_data = df[col]
-        rows.append({
-            'العمود': col,
-            'عدد القيم': col_data.count(),
-            'المتوسط': col_data.mean(),
-            'الحد الأدنى': col_data.min(),
-            'الحد الأقصى': col_data.max(),
-            'الانحراف المعياري': col_data.std()
-        })
-    return pd.DataFrame(rows)
+    # إضافة الصفوف التي تتطابق مع جميع الشروط
+    results.append(df)
 
-st.title("📊 أداة تحليل وتنظيف ملفات Excel / CSV")
+    # دمج الصفوف المطابقة في نتيجة واحدة
+    return pd.concat(results)
 
+
+# علامات التبويب
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📥 رفع الملف", "🧹 التنظيف", "📈 تحليل رقمي", "📝 تحليل كلمات", "📊 رسم بياني"
 ])
 
+# تبويب رفع الملف
 with tab1:
     file = st.file_uploader("ارفع ملف Excel أو CSV", type=["xlsx", "csv"])
     if file:
@@ -62,6 +59,7 @@ with tab1:
         st.session_state["df"] = df
         st.success("✅ تم تحميل الملف بنجاح")
 
+# باقي التبويبات
 if "df" in st.session_state:
     df = st.session_state["df"]
 
@@ -76,40 +74,74 @@ if "df" in st.session_state:
         st.dataframe(df_clean, use_container_width=True)
         st.info(f"🗑️ تم حذف {removed} صف مكرر.")
 
+        # زر تحميل البيانات بعد التنظيف
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+            df_clean.to_excel(writer, index=False, sheet_name='بيانات_منظفة')
+        st.download_button(
+            label="⬇️ تحميل البيانات بعد التنظيف",
+            data=buffer.getvalue(),
+            file_name="بيانات_منظفة.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
     with tab3:
-        st.subheader("📐 تحليل الأعمدة الرقمية")
-        st.dataframe(analyze_numeric(st.session_state["df_clean"]), use_container_width=True)
+        st.subheader("📐 إحصائيات الأعمدة الرقمية")
+        # يمكن حذف هذه السطور إذا لم تكن بحاجة لتحليل البيانات الرقمية
+        # numeric_df = analyze_numeric(df_clean)
+        # st.dataframe(numeric_df, use_container_width=True)
+
+        # buffer = io.BytesIO()
+        # with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+        #     numeric_df.to_excel(writer, index=False, sheet_name='تحليل_رقمي')
+        # st.download_button(
+        #     label="⬇️ تحميل نتائج التحليل الرقمي",
+        #     data=buffer.getvalue(),
+        #     file_name="تحليل_رقمي.xlsx",
+        #     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        # )
 
     with tab4:
         st.subheader("🔍 تحليل كلمات مخصصة مع الصفوف")
-        custom_words = st.text_area("أدخل الكلمات المطلوب تحليلها (سطر لكل كلمة أو مفصولة بفاصلة):", height=150)
+
+        # إدخال الكلمات من المستخدم لكل عمود
+        word_dict = {}
+        columns_to_search = st.multiselect("اختر الأعمدة التي تريد البحث فيها:", df_clean.columns.tolist())
+
+        for col in columns_to_search:
+            words = st.text_area(f"أدخل الكلمات المراد البحث عنها في عمود {col} (مفصولة بفاصلة):", height=100)
+            word_dict[col] = [w.strip() for w in words.split(',') if w.strip()]
+
         if st.button("🔎 تحليل الكلمات في الأعمدة"):
-            word_list = [w for line in custom_words.splitlines() for w in line.split(',')]
-            result = analyze_custom_words_with_rows(st.session_state["df_clean"], word_list)
+            result = analyze_custom_words_with_rows(df_clean, word_dict)
 
             if not result.empty:
-                expanded_rows = []
-                for _, row in result.iterrows():
-                    base = {
-                        'الكلمة': row['الكلمة'],
-                        'العمود': row['العمود'],
-                        'رقم الصف': row['رقم الصف']
-                    }
-                    base.update(row['محتوى الصف'])
-                    expanded_rows.append(base)
+                st.subheader("الصفوف التي تحتوي على الكلمات المدخلة في الأعمدة المحددة:")
+                st.dataframe(result, use_container_width=True)
 
-                result_expanded = pd.DataFrame(expanded_rows)
-                st.dataframe(result_expanded, use_container_width=True)
+                buffer = io.BytesIO()
+                with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                    result.to_excel(writer, index=False, sheet_name='تحليل_كلمات')
+                st.download_button(
+                    label="⬇️ تحميل نتائج الكلمات",
+                    data=buffer.getvalue(),
+                    file_name="تحليل_كلمات.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
             else:
                 st.warning("❗ لم يتم العثور على أي من الكلمات المحددة.")
 
     with tab5:
-        df_clean = st.session_state["df_clean"]
         st.subheader("📊 الرسم البياني التفاعلي")
         col = st.selectbox("اختر عمودًا للرسم:", df_clean.columns)
         if col:
             if df_clean[col].dtype == 'object':
-                fig = px.bar(df_clean[col].value_counts().head(20), title=f"تكرار القيم في العمود: {col}")
+                value_counts_df = df_clean[col].value_counts().head(20).reset_index()
+                value_counts_df.columns = [col, 'count']
+                fig = px.bar(value_counts_df,
+                             x=col, y='count',
+                             labels={col: col, 'count': 'العدد'},
+                             title=f"🔢 تكرار القيم في العمود: {col}")
             else:
                 fig = px.histogram(df_clean, x=col, title=f"Histogram للعمود: {col}")
             st.plotly_chart(fig, use_container_width=True)
