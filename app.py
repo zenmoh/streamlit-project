@@ -114,7 +114,7 @@ if "df" in st.session_state:
             st.subheader("✅ البيانات بعد التنظيف")
             st.dataframe(df_clean.head(100), use_container_width=True)
 
-            if st.checkbox("عرض كل البيانات بعد التنظيف (قد يكون بطيئًا)"):
+            if st.checkbox("عرض كل البيانات بعد التنظيف (قد يكون بطيئًا)") :
                 st.dataframe(df_clean, use_container_width=True)
 
             if remove_duplicates:
