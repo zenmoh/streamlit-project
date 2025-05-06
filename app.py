@@ -32,22 +32,14 @@ st.markdown("""
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         text-align: right;
     }
-    .logo-img {
-        height: 60px;
-        width: 60px;
-        border-radius: 10px;
-        margin-left: 15px;
-    }
     </style>
     <div class="header-container">
         <div class="header-text">
             📊 أداة تحليل وتنظيف ملفات Excel / CSV<br>إعداد: Zen Mohammedad
         </div>
-     
     </div>
 """, unsafe_allow_html=True)
 
-# تحميل الملف
 @st.cache_data
 def load_file(file):
     if file.name.endswith('.csv'):
@@ -55,7 +47,6 @@ def load_file(file):
     else:
         return pd.read_excel(file, parse_dates=True)
 
-# دالة التنظيف المتقدمة
 def clean_data(df, remove_duplicates=True, duplicate_subset=None, drop_empty_rows=True, fillna_method=''):
     original_rows = df.shape[0]
     df.columns = df.columns.str.strip().str.lower().str.replace(' ', '_')
@@ -75,7 +66,6 @@ def clean_data(df, remove_duplicates=True, duplicate_subset=None, drop_empty_row
     removed = original_rows - df.shape[0]
     return df, removed
 
-# تحليل كلمات مخصصة
 def analyze_custom_words_with_rows(df, word_dict):
     results = []
     for col, words in word_dict.items():
@@ -86,14 +76,12 @@ def analyze_custom_words_with_rows(df, word_dict):
     results.append(df)
     return pd.concat(results)
 
-# التبويبات
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "📥 رفع الملف", "🧹 التنظيف", "📈 تحليل رقمي", "📝 تحليل كلمات", "📊 رسم بياني"
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    "📥 رفع ملف", "🧹 التنظيف", "📈 تحليل رقمي", "📝 تحليل كلمات", "📊 رسم بياني", "🔍 فلترة السير الذاتية"
 ])
 
-# تبويب رفع الملف
 with tab1:
-    file = st.file_uploader("ارفع ملف Excel أو CSV", type=["xlsx", "csv"])
+    file = st.file_uploader("ارفع ملف Excel أو CSV للسير الذاتية", type=["xlsx", "csv"])
     if file:
         df = load_file(file)
         st.session_state["df"] = df
@@ -101,7 +89,6 @@ with tab1:
         if df.shape[0] > 100000:
             st.warning("⚠️ الملف يحتوي على أكثر من 100 ألف صف، قد يؤثر ذلك على الأداء.")
 
-# تبويب التنظيف
 if "df" in st.session_state:
     df = st.session_state["df"]
 
@@ -109,10 +96,9 @@ if "df" in st.session_state:
         st.subheader("🧹 إعدادات التنظيف")
 
         remove_duplicates = st.checkbox("حذف الصفوف المكررة", value=True)
-
         duplicate_subset = None
         if remove_duplicates:
-            duplicate_subset = st.multiselect("حدد الأعمدة التي تريد اعتبارها لتحديد التكرارات:", df.columns.tolist(), help="إذا لم تختر شيئًا، سيتم اعتبار كل الأعمدة.")
+            duplicate_subset = st.multiselect("حدد الأعمدة التي تريد اعتبارها لتحديد التكرارات:", df.columns.tolist())
 
         drop_empty_rows = st.checkbox("حذف الصفوف الفارغة تمامًا", value=True)
         fillna_option = st.selectbox("كيف تملأ القيم المفقودة؟", ["", "قيمة فارغة ''", "0", "N/A"])
@@ -125,7 +111,6 @@ if "df" in st.session_state:
         if st.button("🚀 ابدأ التنظيف"):
             df_clean, removed = clean_data(df.copy(), remove_duplicates, duplicate_subset, drop_empty_rows, fillna_value)
             st.session_state["df_clean"] = df_clean
-
             st.subheader("✅ البيانات بعد التنظيف")
             st.dataframe(df_clean.head(100), use_container_width=True)
 
@@ -141,7 +126,6 @@ if "df" in st.session_state:
             else:
                 st.info("🔄 لم يتم حذف صفوف مكررة.")
 
-            # تحميل الملف بعد التنظيف
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
                 df_clean.to_excel(writer, index=False, sheet_name='بيانات_منظفة')
@@ -173,7 +157,6 @@ if "df" in st.session_state:
 
         if st.button("🔎 تحليل الكلمات في الأعمدة"):
             result = analyze_custom_words_with_rows(df_clean, word_dict)
-
             if not result.empty:
                 st.subheader("الصفوف التي تحتوي على الكلمات المدخلة:")
                 st.dataframe(result.head(100), use_container_width=True)
@@ -201,9 +184,61 @@ if "df" in st.session_state:
             if df_clean[col].dtype == 'object':
                 value_counts_df = df_clean[col].value_counts().head(20).reset_index()
                 value_counts_df.columns = [col, 'count']
-                fig = px.bar(value_counts_df, x=col, y='count',
-                             labels={col: col, 'count': 'العدد'},
-                             title=f"🔢 تكرار القيم في العمود: {col}")
+                fig = px.bar(value_counts_df, x=col, y='count', labels={col: col, 'count': 'العدد'}, title=f"🔢 تكرار القيم في العمود: {col}")
             else:
                 fig = px.histogram(df_clean, x=col, title=f"Histogram للعمود: {col}")
             st.plotly_chart(fig, use_container_width=True)
+
+    with tab6:
+        st.subheader("🔍 فلترة السير الذاتية")
+        dropdown_filters = {
+            "الجنس": "اختر الجنس",
+            "محافظة الإقامة الحالية": "اختر المحافظة",
+            "مهارات الحاسوب [Excel]": "اختر مستوى إكسل",
+            "سنوات خبرة العمل الإجمالية": "اختر سنوات الخبرة",
+            "المستوى التعليمي": "اختر المستوى التعليمي",
+            "هل سبق لك إدارة فريق؟": "اختر نعم/لا",
+            "إذاكان الإجابة على السؤال السابق نعم، كم عدد الموظفين الذين تديرهم؟": "عدد الموظفين"
+        }
+
+        filtered_df = df.copy()
+
+        for column, placeholder in dropdown_filters.items():
+            if column in df.columns:
+                options = df[column].dropna().unique().tolist()
+                selected_options = st.multiselect(f"{column}:", [""] + sorted(options), key=column)
+                if selected_options and "" not in selected_options:
+                    filtered_df = filtered_df[filtered_df[column].isin(selected_options)]
+
+        # فلترة الاختصاص التعليمي ككلمات مفتاحية (وليس قائمة منسدلة)
+        if "اختصاص التعليمي" in df.columns:
+            edu_keywords = st.text_input("🔎 أدخل كلمات مفتاحية لـ: اختصاص التعليمي (مفصولة بفاصلة)")
+            if edu_keywords:
+                # تقسيم الكلمات المدخلة بناءً على الفاصلة
+                keyword_list = [keyword.strip() for keyword in edu_keywords.split(",")]
+
+                # فلترة البيانات بناءً على أي كلمة من الكلمات المدخلة
+                filtered_df = filtered_df[
+                    filtered_df["اختصاص التعليمي"].astype(str).apply(
+                        lambda x: any(keyword.lower() in x.lower() for keyword in keyword_list)
+                    )
+                ]
+
+        st.markdown("### 📋 النتائج بعد الفلترة")
+        st.write(filtered_df)
+
+        def convert_df_to_excel(df):
+            buffer = io.BytesIO()
+            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                df.to_excel(writer, index=False, sheet_name='Filtered')
+            return buffer.getvalue()
+
+        if not filtered_df.empty:
+            st.download_button(
+                label="📥 تحميل النتائج كملف Excel",
+                data=convert_df_to_excel(filtered_df),
+                file_name='filtered_cv_data.xlsx',
+                mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+        else:
+            st.info("لم يتم العثور على نتائج مطابقة للفلاتر المحددة.")
